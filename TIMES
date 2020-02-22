@@ -1,0 +1,102 @@
+hpke.curveprime.base.oneshot
+All queries proved.
+3.354s (user 3.310s + system 0.044s), max rss 93968K
+hpke.curveprime.base.export
+All queries proved.
+4.412s (user 4.372s + system 0.040s), max rss 93960K
+hpke.curveprime.auth.oneshot
+All queries proved.
+14.118s (user 14.046s + system 0.072s), max rss 137464K
+hpke.curveprime.auth.export
+All queries proved.
+160.595s (user 160.487s + system 0.108s), max rss 178972K
+hpke.curveprime.psk__psk.oneshot
+All queries proved.
+25.654s (user 25.562s + system 0.092s), max rss 178976K
+hpke.curveprime.psk__psk.export
+All queries proved.
+57.713s (user 57.565s + system 0.148s), max rss 233184K
+hpke.curveprime.psk__skR.oneshot
+All queries proved.
+10.009s (user 9.961s + system 0.048s), max rss 132388K
+hpke.curveprime.psk__skR.export
+All queries proved.
+553.551s (user 553.427s + system 0.124s), max rss 204200K
+hpke.curveprime.auth_psk__skR.oneshot
+All queries proved.
+36.227s (user 36.131s + system 0.096s), max rss 170712K
+hpke.curveprime.auth_psk__skR.export
+All queries proved.
+5.206s (user 5.138s + system 0.068s), max rss 106560K
+hpke.curveprime.auth_psk__skS_psk.oneshot
+All queries proved.
+43.538s (user 43.410s + system 0.128s), max rss 232956K
+hpke.curveprime.auth_psk__skS_psk.export
+All queries proved.
+37.667s (user 37.591s + system 0.076s), max rss 204068K
+hpke.curveprime.auth_psk__psk.oneshot
+All queries proved.
+34.618s (user 34.510s + system 0.108s), max rss 233156K
+hpke.curveprime.auth_psk__psk.export
+All queries proved.
+1187.876s (user 1187.340s + system 0.536s), max rss 795832K
+hpke.curveprime.auth_psk__static_skS_skR.oneshot
+All queries proved.
+30.058s (user 29.958s + system 0.100s), max rss 178940K
+hpke.curveprime.auth_psk__static_skS_skR.export
+All queries proved.
+4.953s (user 4.893s + system 0.060s), max rss 106716K
+hpke.curveprime.auth_psk__static_psk.oneshot
+All queries proved.
+33.153s (user 33.041s + system 0.112s), max rss 233060K
+hpke.curveprime.auth_psk__static_psk.export
+All queries proved.
+1121.228s (user 1120.796s + system 0.432s), max rss 795976K
+hpke.curveprime.auth_psk__static_psk_skS.oneshot
+All queries proved.
+11.869s (user 11.817s + system 0.052s), max rss 137436K
+hpke.curveprime.auth_psk__static_psk_skS.export
+All queries proved.
+16.747s (user 16.695s + system 0.052s), max rss 137440K
+hpke.curveprime.base.oneshot.coll
+All queries proved.
+2.521s (user 2.497s + system 0.024s), max rss 94032K
+hpke.curveprime.auth.oneshot.coll
+All queries proved.
+12.923s (user 12.843s + system 0.080s), max rss 120928K
+hpke.curveprime.psk__psk.oneshot.coll
+All queries proved.
+19.356s (user 19.268s + system 0.088s), max rss 156880K
+hpke.curveprime.psk__skR.oneshot.coll
+All queries proved.
+7.414s (user 7.370s + system 0.044s), max rss 106476K
+hpke.curveprime.auth_psk__skR.oneshot.coll
+All queries proved.
+29.931s (user 29.859s + system 0.072s), max rss 156944K
+hpke.curveprime.auth_psk__skS_psk.oneshot.coll
+All queries proved.
+37.258s (user 37.178s + system 0.080s), max rss 194448K
+hpke.curveprime.auth_psk__psk.oneshot.coll
+All queries proved.
+30.447s (user 30.355s + system 0.092s), max rss 232948K
+hpke.curveprime.auth_psk__static_skS_skR.oneshot.coll
+All queries proved.
+27.879s (user 27.795s + system 0.084s), max rss 156896K
+hpke.curveprime.auth_psk__static_psk.oneshot.coll
+All queries proved.
+30.771s (user 30.695s + system 0.076s), max rss 232948K
+hpke.curveprime.auth_psk__static_psk_skS.oneshot.coll
+All queries proved.
+9.190s (user 9.138s + system 0.052s), max rss 120792K
+hpke.curveprime.base.export.coll
+All queries proved.
+3.756s (user 3.724s + system 0.032s), max rss 93972K
+hpke.curveprime.auth.export.coll
+All queries proved.
+155.872s (user 155.788s + system 0.084s), max rss 156980K
+hpke.curveprime.psk__psk.export.coll
+All queries proved.
+48.437s (user 48.321s + system 0.116s), max rss 198636K
+hpke.curveprime.psk__skR.export.coll
+All queries proved.
+525.832s (user 525.752s + system 0.080s), max rss 204032K
