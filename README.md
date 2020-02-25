@@ -1,12 +1,12 @@
 # An Analysis of Hybrid Public Key Encryption
 
 Supplementary material for
-[https://eprint.iacr.org/2020/2xx](eprint.iacr.org/2020/2xx).
+[ia.cr/2020/243](https://ia.cr/2020/243).
 
 ## CryptoVerif
 
 We use CryptoVerif 2.02 which is available from
-[https://prosecco.gforge.inria.fr/personal/bblanche/cryptoverif/](https://prosecco.gforge.inria.fr/personal/bblanche/cryptoverif/).
+[cryptoverif.inria.fr](https://cryptoverif.inria.fr).
 
 We refer to the readme file included with the CryptoVerif distribution
 for further instructions for building and running.
