@@ -1,0 +1,1289 @@
+(* Mechanised cryptographic proofs for HPKE using CryptoVerif.
+
+  Following as close as possible the notation of the specification at
+  https://cfrg.github.io/draft-irtf-cfrg-hpke/draft-irtf-cfrg-hpke.html
+
+  Generate individual model files with:
+  ./run false
+
+  Generate and run (takes a while and writes a lot of files to disk):
+  ./run
+
+  Run individual model with (example file):
+  f=hpke.curveprime.base.oneshot; mkdir -p $f; cryptoverif -oproof $f/$f.proof -o $f $f.cv
+
+  2019-2020, Benjamin Lipp, INRIA Paris, Prosecco
+  benjamin.lipp@inria.fr
+*)
+
+(* BEGIN m4 variables are processed that are given as arguments. *)
+
+
+
+  (* mode_auth is es,ss:
+     - no psk
+     - corrupting skR leads to trivial break *)
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(* TODO Use  to put success only when needed *)
+
+
+
+(* END *)
+
+(* BEGIN process m4 variables created from input variables. *)
+
+
+
+
+
+
+
+
+
+(* END *)
+
+(* BEGIN other m4 macros. *)
+
+(* The macro m4_out_game outputs the current game to a file.
+   The file name contains a number that is increased at each output. *)
+
+
+
+(* END *)
+
+
+
+
+proof {
+  out_game "g00.out.cv";
+  SArename pkE_4; (* the proof is significantly slower without *)
+  out_game "g01.out.cv";
+  SArename pkE_5;
+  out_game "g02.out.cv";
+  insert after "Marshal(pkE_11"
+    "find j <= N_initiators_auth suchthat
+       defined(pkE_9[j]) && pkE_11 = pkE_9[j] then";
+  out_game "g03.out.cv";
+  simplify;
+  insert after "in(ch1_2\\["
+
+    "let extract_auth_input(psk: psk_t, concat2G(dh1: G_t, dh2: G_t)) = x1_2 in";
+
+  out_game "g04.out.cv";
+
+  insert_event break_auth before_nth 3 "rcvd";
+  simplify;
+  focus "query event(break_auth)";
+  success simplify;
+
+  out_game "g05.out.cv";
+  simplify;
+  crypto rom(ExtractAuth_inner);
+  simplify;
+
+  crypto rom(Hash_inner);
+  simplify;
+
+  out_game "g06.out.cv";
+  crypto gdh(exp) z_4;
+  simplify;
+  out_game "g07.out.cv";
+  crypto prf(Expand) **;
+  simplify;
+  crypto truncate(truncate_to_Nn) **;
+  crypto truncate(truncate_to_Nk) **;
+  simplify;
+  out_game "g08.out.cv";
+  crypto int_ctxt(Seal_inner) **;
+  simplify;
+  success; (* This is for the focus query. *)
+
+  (* Now we proved that break_auth has only a negligible probability. *)
+
+  out_game "g09.out.cv";
+  simplify;
+  crypto rom(ExtractAuth_inner);
+  simplify;
+
+  crypto rom(Hash_inner);
+  simplify;
+
+  out_game "g10.out.cv";
+  crypto gdh(exp) z_4;
+  simplify;
+  out_game "g11.out.cv";
+  crypto prf(Expand) **;
+  simplify;
+
+  crypto truncate(truncate_to_Nh) **;
+  simplify;
+  crypto prf(Expand) **;
+  simplify;
+
+  crypto truncate(truncate_to_Nn) **;
+  crypto truncate(truncate_to_Nk) **;
+  simplify;
+  out_game "g12.out.cv";
+  crypto int_ctxt(Seal_inner) **;
+  simplify;
+  success;
+  simplify;
+  out_game "g13.out.cv";
+  crypto ind_cpa(Seal_inner) **;
+  success
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(* TODO make sure the channel names are all unique *)
+channel c_start, c_setup, c_config_init, c_init, c_resp.
+channel c_config_init_sw, c_init_sw.
+channel c_init_send, c_init_send_config.
+channel c_resp_mult.
+channel c_resp_send_config.
+channel c_msgs_send_config, c_msgs_send, c_msgs_recv, c_msgs_recv_finish.
+channel c_corrupt_skS, c_corrupt_skR, c_corrupt_psk, c_corrupt_skS_psk.
+
+(* This session index is not part of the specification but assumed
+   by the model. In an implementation, a session index is likely needed
+   to match subsequent messages to a session and thus the appropriate
+   decryption context. The session index could be explicit, or implicit,
+   i.e. a TCP connection. *)
+(*type session_index_t [large,fixed].
+table sent_seqs(session_index_t, nonce_t).
+table rcvd_seqs(session_index_t, nonce_t).*)
+
+type psk_t [large,fixed].
+const default_psk: psk_t.
+fun psk_to_bitstring(psk_t): bitstring [data].
+
+const default_pskID: bitstring.
+const default_pskID_hash: bitstring.
+(* We believe an equation like
+equation Hash(default_pskID) = default_pskID_hash.
+is not necessary, because the default psk is only used in modes where
+the psk in not used and thus a formal link between default_psk and
+default_pskID is not necessary. *)
+const default_pkSm: bitstring.
+
+type expand_t [large,fixed].
+  (* This covers the maximum length of HKDF-Expand's output. For
+     RFC 5869, this is 255*Nh. *)
+type key_t [large,fixed].
+type nonce_t [large,fixed].
+
+(* Application constants *)
+const app_info: bitstring.
+
+expand Xor(
+  nonce_t,
+  xor,
+  nonce_zero (* also used for seq that starts at zero *)
+).
+
+(* DH-based KEM *)
+
+
+(* For P-256 and P-521
+- to model Unmarshal(), use a left-hand-side pattern matching of Marshal
+- TODO figure out if Marshal and G_to_bitstring are actually the same:
+    I think they are the same, because looking at the F* specs for
+    P256 and Curve25519, the scalarmult function is returning an
+    encoded point.
+*)
+type G_t [bounded,large].
+fun Marshal(G_t): bitstring [data].
+fun G_to_bitstring(G_t): bitstring [data].
+type Z_t [bounded,large].
+expand DH_good_group(
+  G_t,
+  Z_t,
+  g,
+  exp,
+  exp_1,
+  mult
+).
+
+proba P_GDH.
+expand GDH(
+  (* types *)
+  G_t,  (* Group elements *)
+  Z_t,  (* Exponents *)
+  (* variables *)
+  g,    (* a generator of the group *)
+  exp,  (* exponentiation function *)
+  exp_1, (* a symbol that replaces exp after game transformation *)
+  mult, (* multiplication function for exponents *)
+  (* probabilities *)
+  P_GDH (* probability of breaking the GDH assumption *)
+).
+
+
+
+
+
+
+const default_pkS: G_t.
+equation Marshal(default_pkS) = default_pkSm.
+
+letfun DH(exponent: Z_t, group_element: G_t) =
+  exp(group_element, exponent).
+letfun pk(exponent: Z_t) =
+  exp(g, exponent).
+letfun GenerateKeyPair() =
+  new z: Z_t;
+  (z, exp(g, z)).
+
+
+(* Key Derivation Function *)
+
+type hash_key_t [fixed].
+type hash_output_t [large,fixed].
+fun hash_output_to_bitstring(hash_output_t): bitstring [data].
+
+
+expand ROM_hash_1(
+  (* types *)
+  hash_key_t,
+  bitstring, (* hashinput1: pskID and info are both bitstrings *)
+  hash_output_t,
+  (* functions *)
+  Hash_inner,
+  (* processes *)
+  Hash_oracle,
+  (* parameters *)
+  N_qHash  (* number of queries to the oracle by the adversary *)
+).
+
+
+letfun Hash(key_hash: hash_key_t, input: bitstring) =
+  hash_output_to_bitstring(Hash_inner(key_hash, input)).
+
+(*
+  Extract(salt, IKM):
+    Extract a pseudorandom key of fixed length from
+    input keying material IKM and an optional octet string salt.
+
+    Extract(salt, IKM) is HMAC-Hash(salt, IKM)
+*)
+
+type extract_input_t.
+fun extract_input(psk_t, bitstring): extract_input_t [data].
+type extract_auth_input_t.
+fun extract_auth_input(psk_t, bitstring): extract_auth_input_t [data].
+type extract_output_t [large,fixed]. (* size: Nh bytes *)
+
+expand ROM_hash_1(
+  (* types *)
+  hash_key_t,
+  extract_input_t,
+  extract_output_t,
+  (* functions *)
+  Extract_inner,
+  (* processes *)
+  Extract_oracle,
+  (* parameters *)
+  N_qExtract  (* number of queries to the oracle by the adversary *)
+).
+expand ROM_hash_1(
+  (* types *)
+  hash_key_t,
+  extract_auth_input_t,
+  extract_output_t,
+  (* functions *)
+  ExtractAuth_inner,
+  (* processes *)
+  ExtractAuth_oracle,
+  (* parameters *)
+  N_qExtractAuth  (* number of queries to the oracle by the adversary *)
+).
+
+letfun Extract(key_extract: hash_key_t, psk: psk_t, zz: bitstring) =
+   Extract_inner(key_extract, extract_input(psk, zz)).
+letfun ExtractAuth(key_extract_auth: hash_key_t, psk: psk_t, zz: bitstring) =
+   ExtractAuth_inner(key_extract_auth, extract_auth_input(psk, zz)).
+
+
+(*
+  Expand(PRK, info, L):
+    Expand a pseudorandom key PRK using optional string info into L bytes
+    of output keying material.
+*)
+
+proba P_PRF.
+expand PRF_large(
+  extract_output_t,
+  bitstring,
+  expand_t,
+  Expand,
+  P_PRF
+).
+
+
+def truncate(input_t, output_t, truncate_f) {
+
+  param N.
+
+  fun truncate_f(input_t): output_t.
+
+  (* If we truncate a uniformly distributed random value, 
+     we obtain a uniformly distributed random value *)
+  equiv(truncate(truncate_f))
+    foreach i<=N do h <-R input_t;
+      O_trunc() := return(truncate_f(h))
+    <=(0)=>
+    foreach i<=N do k <-R output_t;
+      O_trunc() := return(k).
+}
+
+expand truncate(
+  expand_t,
+  nonce_t,
+  truncate_to_Nn
+).
+expand truncate(
+  expand_t,
+  key_t,
+  truncate_to_Nk
+).
+(* Nh: The output size of the Hash and Extract functions *)
+expand truncate(
+  expand_t,
+  extract_output_t,
+  truncate_to_Nh
+).
+
+letfun Expand_Nk(key: extract_output_t, input: bitstring) =
+  truncate_to_Nk(Expand(key, input)).
+letfun Expand_Nn(key: extract_output_t, input: bitstring) =
+  truncate_to_Nn(Expand(key, input)).
+letfun Expand_Nh(key: extract_output_t, input: bitstring) =
+  truncate_to_Nh(Expand(key, input)).
+
+
+(* An AEAD encryption algorithm *)
+
+proba P_cpa.
+proba P_ctxt.
+expand AEAD_nonce(
+  (* types *)
+  key_t,
+  bitstring, (* plaintext *)
+  bitstring, (* ciphertext *)
+  bitstring, (* additional data *)
+  nonce_t,
+  (* functions *)
+  Seal_inner,
+  Open_inner,
+  injbot, (* injection from plaintext to bitstringbot:
+          (* injbot(plaintext): bitstringbot *)
+  Zero,   (* returns a plaintext of same length, consisting of zeros:
+          (* Zero(plaintext): plaintext *)
+  (* probabilities *)
+  P_cpa,
+  P_ctxt
+).
+letfun Seal(key: key_t, nonce: nonce_t, aad: bitstring, pt: bitstring) =
+  Seal_inner(pt, aad, key, nonce).
+letfun Open(key: key_t, nonce: nonce_t, aad: bitstring, ct: bitstring) =
+  Open_inner(ct, aad, key, nonce).
+
+(***********************************************************************
+  The following is part of boolean_choice.cvl
+  inspired by some CryptoVerif examples and Bruno Blanchet
+***********************************************************************)
+
+def boolean_choice(value_t, test) {
+
+fun test(bool, value_t, value_t) : value_t.
+
+equation forall x:value_t, y:value_t; test(true, x, y) = x.
+equation forall x:value_t, y:value_t; test(false, x, y) = y.
+(* Knowing the equations defined above, this can be deduced, but
+   CryptoVerif can’t do this on its own. *)
+equation forall x:value_t, b:bool; test(b,x,x) = x.
+
+}
+
+(* Zero needs to be defined already, typically by the AEAD scheme that’s
+ * expanded somewhere before.
+ *)
+def boolean_choice_for_encryption(value_t, Zero, test) {
+
+expand boolean_choice(value_t, test).
+
+(* Knowing the equations defined above, this can be deduced, but
+   CryptoVerif can’t do this on its own. *)
+equation forall x:value_t, y:value_t, b:bool; Zero(test(b,x,y)) = test (b,Zero(x),Zero(y)).
+
+}
+
+(* Define a function for choosing from two attacker-provided plaintexts based
+   on a bit. Also, defines some equations on it so CryptoVerif is able
+   to reason about it. *)
+expand boolean_choice_for_encryption(
+  (* types *)
+  bitstring,  (* type of the values *)
+  (* functions *)
+  Zero,       (* the Zero function provided by the encryption scheme. *)
+              (* Needed for some equations about the function. *)
+  test	      (* Name of the choice function: *)
+              (* test(bool, bitstring, bitstring): bitstring *)
+).
+
+
+(*  5.1. DH-Based KEM *)
+
+type Encap_res_t.
+fun Encap_success(bitstring, bitstring): Encap_res_t [data].
+const Encap_fail: Encap_res_t.
+equation forall zz: bitstring, enc: bitstring;
+  Encap_success(zz, enc) <> Encap_fail.
+
+letfun Encap(pkR: G_t) =
+  let (skE: Z_t, pkE: G_t) = GenerateKeyPair() in
+  (
+    let zz: bitstring = G_to_bitstring(DH(skE, pkR)) in
+    let enc: bitstring = Marshal(pkE) in
+    Encap_success(zz, enc)
+  ) else (
+    Encap_fail
+  ).
+
+type Decap_res_t.
+fun Decap_success(bitstring): Decap_res_t [data].
+const Decap_fail: Decap_res_t.
+equation forall zz: bitstring; Decap_success(zz) <> Decap_fail.
+
+letfun Decap(enc: bitstring, skR: Z_t) =
+  let Marshal(pkE: G_t) = enc in
+  (
+    Decap_success(G_to_bitstring(DH(skR, pkE)))
+  ) else (
+    Decap_fail
+  ).
+
+
+fun concat2G(G_t, G_t): bitstring [data].
+
+type AuthEncap_res_t.
+fun AuthEncap_success(bitstring, bitstring): AuthEncap_res_t [data].
+const AuthEncap_fail: AuthEncap_res_t.
+equation forall zz: bitstring, enc: bitstring;
+  AuthEncap_success(zz, enc) <> AuthEncap_fail.
+
+letfun AuthEncap(pkR: G_t, skS: Z_t) =
+  let (skE: Z_t, pkE: G_t) = GenerateKeyPair() in
+  (
+    let zz: bitstring = concat2G(DH(skE, pkR), DH(skS, pkR)) in
+    let enc: bitstring = Marshal(pkE) in
+    AuthEncap_success(zz, enc)
+  ) else (
+    AuthEncap_fail
+  ).
+
+type AuthDecap_res_t.
+fun AuthDecap_success(bitstring): AuthDecap_res_t [data].
+const AuthDecap_fail: AuthDecap_res_t.
+equation forall zz: bitstring; AuthDecap_success(zz) <> AuthDecap_fail.
+
+letfun AuthDecap(enc: bitstring, skR: Z_t, pkS: G_t) =
+  let Marshal(pkE: G_t) = enc in
+  (
+    AuthDecap_success(concat2G(DH(skR, pkE), DH(skR, pkS)))
+  ) else (
+    AuthDecap_fail
+  ).
+
+
+(* Encryption Context *)
+
+type mode_t [fixed].
+const mode_base: mode_t.
+const mode_psk: mode_t.
+const mode_auth: mode_t.
+const mode_auth_psk: mode_t.
+
+type two_bytes [fixed].
+const kem_id: two_bytes.
+const kdf_id: two_bytes.
+const aead_id: two_bytes.
+
+fun concat2bitstring(bitstring, bitstring): bitstring [data].
+fun concat3(two_bytes, two_bytes, two_bytes): bitstring [data].
+fun concat7(mode_t, bitstring, bitstring, bitstring,
+            bitstring, bitstring, bitstring): bitstring [data].
+
+const hpke_key: bitstring.
+const hpke_nonce: bitstring.
+const hpke_exp: bitstring.
+
+type context_t [large,fixed].
+(* key, nonce, seq, exporter_secret *)
+fun Context(key_t, nonce_t, nonce_t, extract_output_t): context_t [data].
+
+type Context_new_seq_res_t.
+fun Context_new_seq_success(context_t): Context_new_seq_res_t [data].
+const Context_new_seq_fail: Context_new_seq_res_t.
+equation forall ctx: context_t;
+  Context_new_seq_success(ctx) <> Context_new_seq_fail.
+
+letfun Context_new_seq(ctx: context_t, seq: nonce_t) =
+  let Context(key: key_t, nonce: nonce_t, seq_old: nonce_t, exporter_secret_old: extract_output_t) = ctx in
+  (
+    Context_new_seq_success(Context(key, nonce, seq, exporter_secret_old))
+  ) else (
+    Context_new_seq_fail
+  ).
+
+letfun VerifyMode(mode: mode_t, psk: psk_t, pskID: bitstring, pkSm: bitstring) =
+  let got_psk: bool = not(psk = default_psk) && not(pskID = default_pskID) in
+  let no_psk: bool = (psk = default_psk) && (pskID = default_pskID) in
+  let got_pkSm: bool = not(pkSm = default_pkSm) in
+  let no_pkSm: bool = (pkSm = default_pkSm) in
+
+  if (mode = mode_base     && (got_psk || got_pkSm)) then (false) else (
+  if (mode = mode_psk      && (no_psk  || got_pkSm)) then (false) else (
+  if (mode = mode_auth     && (got_psk || no_pkSm) ) then (false) else (
+  if (mode = mode_auth_psk && (no_psk  || no_pkSm) ) then (false) else (
+  true)))).
+
+(* We provide pskID_hash and info_hash as parameters to simplify
+   the model. They are either way the same for all protocol
+   executions in this model, and then the random oracle doesn't
+   blow up inside KeySchedule. *)
+
+
+
+
+
+
+
+type KeyScheduleAuth_res_t.
+fun KeyScheduleAuth_success(context_t): KeyScheduleAuth_res_t [data].
+const KeyScheduleAuth_fail: KeyScheduleAuth_res_t.
+equation forall ctx: context_t;
+  KeyScheduleAuth_success(ctx) <> KeyScheduleAuth_fail.
+
+letfun KeyScheduleAuth(key_hash: hash_key_t, key_extract: hash_key_t,
+                   mode: mode_t, pkR: G_t,
+                   zz: bitstring, enc: bitstring, info_hash: bitstring,
+                   psk: psk_t, pskID: bitstring, pskID_hash: bitstring, pkSm: bitstring) =
+  if VerifyMode(mode, psk, pskID, pkSm) then
+  (
+    let pkRm: bitstring = Marshal(pkR) in
+    let ciphersuite: bitstring = concat3(kem_id, kdf_id, aead_id) in
+    let context: bitstring = concat7(mode, ciphersuite, enc, pkRm, pkSm,
+                                     pskID_hash, info_hash) in
+
+    (* secret is a reserved keyword in CryptoVerif *)
+    let secrett: extract_output_t = ExtractAuth(key_extract, psk, zz) in
+    let key: key_t = Expand_Nk(secrett, concat2bitstring(hpke_key, context)) in
+    let nonce: nonce_t = Expand_Nn(secrett, concat2bitstring(hpke_nonce, context)) in
+    let exporter_secret: extract_output_t = Expand_Nh(secrett, concat2bitstring(hpke_exp, context)) in
+    KeyScheduleAuth_success(Context(key, nonce, nonce_zero, exporter_secret))
+  ) else (
+    KeyScheduleAuth_fail
+  ).
+
+
+
+
+
+
+(* Authentication using an Asymmetric Key *)
+
+type SetupAuthI_res_t.
+fun SetupAuthI_success(bitstring, context_t): SetupAuthI_res_t [data].
+const SetupAuthI_fail: SetupAuthI_res_t.
+equation forall enc: bitstring, ctx: context_t;
+  SetupAuthI_success(enc, ctx) <> SetupAuthI_fail.
+
+letfun SetupAuthI(key_hash: hash_key_t, key_extract: hash_key_t,
+                  pkR: G_t, info_hash: bitstring, skS: Z_t) =
+  let AuthEncap_success(
+        zz: bitstring, enc: bitstring) = AuthEncap(pkR, skS) in
+  (
+    let pkSm: bitstring = Marshal(pk(skS)) in
+    let KeyScheduleAuth_success(ctx: context_t) = KeyScheduleAuth(key_hash, key_extract, mode_auth, pkR, zz, enc, info_hash, default_psk, default_pskID, default_pskID_hash, pkSm) in
+    (
+      SetupAuthI_success(enc, ctx)
+    ) else (
+      SetupAuthI_fail
+    )
+  ) else (
+    SetupAuthI_fail
+  ).
+
+type SetupAuthR_res_t.
+fun SetupAuthR_success(context_t): SetupAuthR_res_t [data].
+const SetupAuthR_fail: SetupAuthR_res_t.
+equation forall ctx: context_t;
+  SetupAuthR_success(ctx) <> SetupAuthR_fail.
+
+letfun SetupAuthR(key_hash: hash_key_t, key_extract: hash_key_t,
+                  enc: bitstring, skR: Z_t, info_hash: bitstring, pkS: G_t) =
+  let AuthDecap_success(zz: bitstring) = AuthDecap(enc, skR, pkS) in
+  (
+    let pkSm: bitstring = Marshal(pkS) in
+    let KeyScheduleAuth_success(ctx: context_t) = KeyScheduleAuth(key_hash, key_extract, mode_auth, pk(skR), zz, enc, info_hash, default_psk, default_pskID, default_pskID_hash, pkSm) in
+    (
+      SetupAuthR_success(ctx)
+    ) else (
+      SetupAuthR_fail
+    )
+  ) else (
+    SetupAuthR_fail
+  ).
+
+
+(* Authentication using both a PSK and an Asymmetric Key *)
+
+type SetupAuthPSKI_res_t.
+fun SetupAuthPSKI_success(bitstring, context_t): SetupAuthPSKI_res_t [data].
+const SetupAuthPSKI_fail: SetupAuthPSKI_res_t.
+equation forall enc: bitstring, ctx: context_t;
+  SetupAuthPSKI_success(enc, ctx) <> SetupAuthPSKI_fail.
+
+letfun SetupAuthPSKI(key_hash: hash_key_t, key_extract: hash_key_t,
+                     pkR: G_t, info_hash: bitstring,
+                     psk: psk_t, pskID: bitstring, pskID_hash: bitstring, skS: Z_t) =
+  let AuthEncap_success(
+        zz: bitstring, enc: bitstring) = AuthEncap(pkR, skS) in
+  (
+    let pkSm: bitstring = Marshal(pk(skS)) in
+    let KeyScheduleAuth_success(ctx: context_t) = KeyScheduleAuth(key_hash, key_extract, mode_auth_psk, pkR, zz, enc, info_hash, psk, pskID, pskID_hash, pkSm) in
+    (
+      SetupAuthPSKI_success(enc, ctx)
+    ) else (
+      SetupAuthPSKI_fail
+    )
+  ) else (
+    SetupAuthPSKI_fail
+  ).
+
+type SetupAuthPSKR_res_t.
+fun SetupAuthPSKR_success(context_t): SetupAuthPSKR_res_t [data].
+const SetupAuthPSKR_fail: SetupAuthPSKR_res_t.
+equation forall ctx: context_t;
+  SetupAuthPSKR_success(ctx) <> SetupAuthPSKR_fail.
+
+letfun SetupAuthPSKR(key_hash: hash_key_t, key_extract: hash_key_t,
+                     enc: bitstring, skR: Z_t, info_hash: bitstring,
+                     psk: psk_t, pskID: bitstring, pskID_hash: bitstring, pkS: G_t) =
+  let AuthDecap_success(zz: bitstring) = AuthDecap(enc, skR, pkS) in
+  (
+    let pkSm: bitstring = Marshal(pkS) in
+    let KeyScheduleAuth_success(ctx: context_t) = KeyScheduleAuth(key_hash, key_extract, mode_auth_psk, pk(skR), zz, enc, info_hash, psk, pskID, pskID_hash, pkSm) in
+    (
+      SetupAuthPSKR_success(ctx)
+    ) else (
+      SetupAuthPSKR_fail
+    )
+  ) else (
+    SetupAuthPSKR_fail
+  ).
+
+
+
+(* Encryption and Decryption *)
+
+letfun Context_Nonce(nonce: nonce_t, seq: nonce_t) =
+  (* We suppose that seq has already the length of the nonce, by
+     assigning it the type nonce_t. *)
+  xor(nonce, seq).
+
+type Context_Seal_res_t.
+fun Context_Seal_success(bitstring): Context_Seal_res_t [data].
+const Context_Seal_fail: Context_Seal_res_t.
+equation forall ct: bitstring;
+  Context_Seal_success(ct) <> Context_Seal_fail.
+
+letfun Context_Seal(context: context_t, aad: bitstring,
+                    pt: bitstring) =
+  let Context(key: key_t, nonce: nonce_t, seq: nonce_t, exporter_secret_unused: extract_output_t) = context in
+  (
+    let ct: bitstring = Seal(key, Context_Nonce(nonce, seq), aad, pt) in
+    (* TODO model increment seq (probably outside of this function)
+         self.seq += 1 *)
+    Context_Seal_success(ct)
+  ) else (
+    Context_Seal_fail
+  ).
+
+type Context_Open_res_t.
+fun Context_Open_success(bitstring): Context_Open_res_t [data].
+const Context_Open_fail: Context_Open_res_t.
+equation forall pt: bitstring;
+  Context_Open_success(pt) <> Context_Open_fail.
+
+letfun Context_Open(context: context_t, aad: bitstring,
+                    ct: bitstring) =
+  let Context(key: key_t, nonce: nonce_t, seq: nonce_t, exporter_secret_unused: extract_output_t) = context in
+  (
+    let injbot(pt: bitstring) = Open(key, Context_Nonce(nonce, seq),
+                                     aad, ct) in
+    (
+      (* TODO model increment seq (probably outside of this function)
+           self.seq += 1 *)
+      Context_Open_success(pt)
+    ) else (
+      Context_Open_fail
+    )
+  ) else (
+    Context_Open_fail
+  ).
+
+
+type Context_Export_res_t.
+fun Context_Export_success(expand_t): Context_Export_res_t [data].
+const Context_Export_fail: Context_Export_res_t.
+equation forall exported: expand_t;
+  Context_Export_success(exported) <> Context_Export_fail.
+
+(* Context_Export directly outputs the maximum length (for HKDF it is
+   255*Hashlen) and the truncation is left to the user.
+   This simplifies the model, as we can re-use the same Expand function. *)
+
+letfun Context_Export(context: context_t, exporter_context: bitstring) =
+  let Context(key: key_t, nonce: nonce_t, seq: nonce_t, exporter_secret_here: extract_output_t) = context in
+  (
+    let exported: expand_t = Expand(exporter_secret_here, exporter_context) in
+    Context_Export_success(exported)
+  ) else (
+    Context_Export_fail
+  ).
+
+(* Single-Shot APIs *)
+
+
+
+
+type SealAuth_res_t.
+fun SealAuth_success(bitstring, bitstring): SealAuth_res_t [data].
+const SealAuth_fail: SealAuth_res_t.
+equation forall enc: bitstring, ct: bitstring;
+  SealAuth_success(enc, ct) <> SealAuth_fail.
+
+letfun SealAuth(key_hash: hash_key_t, key_extract: hash_key_t,
+                pkR: G_t, info_hash: bitstring, aad: bitstring,
+                pt: bitstring, skS: Z_t) =
+  let SetupAuthI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthI(key_hash, key_extract, pkR, info_hash, skS) in
+  (
+    let Context_Seal_success(ct: bitstring) = Context_Seal(ctx, aad, pt) in
+    (
+      SealAuth_success(enc, ct)
+    ) else (
+      SealAuth_fail
+    )
+  ) else (
+    SealAuth_fail
+  ).
+
+type OpenAuth_res_t.
+fun OpenAuth_success(Context_Open_res_t): OpenAuth_res_t [data].
+const OpenAuth_fail: OpenAuth_res_t.
+equation forall ctx_open: Context_Open_res_t;
+  OpenAuth_success(ctx_open) <> OpenAuth_fail.
+
+letfun OpenAuth(key_hash: hash_key_t, key_extract: hash_key_t,
+                enc: bitstring, skR: Z_t, info_hash: bitstring,
+                aad: bitstring, ct: bitstring, pkS: G_t) =
+  let SetupAuthR_success(ctx: context_t) =
+    SetupAuthR(key_hash, key_extract, enc, skR, info_hash, pkS) in
+  (
+    OpenAuth_success(Context_Open(ctx, aad, ct))
+  ) else (
+    OpenAuth_fail
+  ).
+
+
+type SealAuthPSK_res_t.
+fun SealAuthPSK_success(bitstring, bitstring): SealAuthPSK_res_t [data].
+const SealAuthPSK_fail: SealAuthPSK_res_t.
+equation forall enc: bitstring, ct: bitstring;
+  SealAuthPSK_success(enc, ct) <> SealAuthPSK_fail.
+
+letfun SealAuthPSK(key_hash: hash_key_t, key_extract: hash_key_t,
+                   pkR: G_t, info_hash: bitstring, aad: bitstring,
+                   pt: bitstring, psk: psk_t, pskID: bitstring, pskID_hash: bitstring,
+                   skS: Z_t) =
+  let SetupAuthPSKI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthPSKI(key_hash, key_extract, pkR, info_hash, psk, pskID, pskID_hash, skS) in
+  (
+    let Context_Seal_success(ct: bitstring) = Context_Seal(ctx, aad, pt) in
+    (
+      SealAuthPSK_success(enc, ct)
+    ) else (
+      SealAuthPSK_fail
+    )
+  ) else (
+    SealAuthPSK_fail
+  ).
+
+type OpenAuthPSK_res_t.
+fun OpenAuthPSK_success(Context_Open_res_t): OpenAuthPSK_res_t [data].
+const OpenAuthPSK_fail: OpenAuthPSK_res_t.
+equation forall ctx_open: Context_Open_res_t;
+  OpenAuthPSK_success(ctx_open) <> OpenAuthPSK_fail.
+
+letfun OpenAuthPSK(key_hash: hash_key_t, key_extract: hash_key_t,
+                   enc: bitstring, skR: Z_t, info_hash: bitstring,
+                   aad: bitstring, ct: bitstring,
+                   psk: psk_t, pskID: bitstring, pskID_hash: bitstring, pkS: G_t) =
+  let SetupAuthPSKR_success(ctx: context_t) =
+    SetupAuthPSKR(key_hash, key_extract,
+                  enc, skR, info_hash, psk, pskID, pskID_hash, pkS) in
+  (
+    OpenAuthPSK_success(Context_Open(ctx, aad, ct))
+  ) else (
+    OpenAuthPSK_fail
+  ).
+
+
+
+(* TODO make sure the params used are all unique *)
+param N_initiators_base, N_initiators_base_sw.
+param N_initiators_auth, N_initiators_auth_sw.
+param N_initiators_psk, N_initiators_psk_sw.
+param N_initiators_auth_psk, N_initiators_auth_psk_sw.
+param N_initiators_mult.
+param N_initiators_mult_send.
+param N_responders_base, N_responders_base_sw.
+param N_responders_auth, N_responders_auth_sw.
+param N_responders_psk, N_responders_psk_sw.
+param N_responders_auth_psk, N_responders_auth_psk_sw.
+param N_initiators_psk_adv, N_responders_psk_adv.
+param N_initiators_auth_psk_adv, N_responders_auth_psk_adv.
+param N_responders_mult.
+param N_responders_mult_recv.
+param N_responders_mult_send.
+param N_msgs_send, N_msgs_recv.
+
+
+(* In one-shot, the initiator does not receive the encryption
+   context from the API. This means it cannot send subsequent messages.
+*)
+
+letfun has_secrecy(pkX: G_t, pkR: G_t) =
+  
+
+  
+    pkX = pkR
+  
+  .
+
+letfun has_auth() =
+  
+  
+    (* We don"t look at KCI in case of compromise of skR because if
+       skR is compromised, we don"t even have a secrecy guarantee. *)
+    if defined(skS_is_corrupted) then (* impersonation of I *)
+    (
+      false
+    ) else (
+      true
+    )
+  
+  .
+
+const exp_ctx_1: bitstring.
+const exp_ctx_2: bitstring.
+
+
+
+event rcvd(
+  bool, (* clean_session *)
+  mode_t,
+  G_t, (* pkR *)
+  G_t, (* pkS *)
+  bitstring, (* pskID *)
+  bitstring, (* info *)
+  bitstring, (* aad *)
+  bitstring  (* plaintext *)
+
+,
+  expand_t,  (* exported key 1 *)
+  expand_t   (* exported key 2 *)
+
+).
+event sent(
+  mode_t,
+  G_t, (* pkR *)
+  G_t, (* pkS *)
+  bitstring, (* pskID *)
+  bitstring, (* info *)
+  bitstring, (* aad *)
+  bitstring  (* plaintext *)
+
+,
+  expand_t,  (* exported key 1 *)
+  expand_t   (* exported key 2 *)
+
+).
+
+
+
+let Initiator_Auth(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                           b_I: bool, pkR: G_t, skS: Z_t, pkS: G_t) =
+  ! i_N_initiators <= N_initiators_auth
+  in(c_config_init, (pkX: G_t, pt1: bitstring, pt2: bitstring,
+                          aad: bitstring));
+  if Zero(pt1) = Zero(pt2) then
+  let bit: bool = if has_secrecy(pkX, pkR) then b_I else false in
+  let pt: bitstring = test(bit, pt1, pt2) in
+
+
+  (* oneshot with exported keys *)
+  let SetupAuthI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthI(key_hash, key_extract, pkX, info_hash, skS) in
+  let Context_Seal_success(ct: bitstring) =
+    Context_Seal(ctx, aad, pt) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+
+  event sent(mode_auth, pkX, pkS, default_pskID, app_info, aad, pt, export_1, export_2);
+
+  if has_secrecy(pkX, pkR) then
+  (
+    let export_1_secr: expand_t = export_1 in
+    let export_2_secr: expand_t = export_2 in
+    out(c_init, (enc, ct, aad))
+  ) else (
+    out(c_init, (enc, ct, aad, export_1, export_2))
+  )
+.
+
+
+
+let Responder_Auth(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                           skR: Z_t, pkR: G_t, pkS: G_t) =
+  ! i_N_responders <= N_responders_auth
+  in(c_resp, (enc: bitstring, ct: bitstring, aad: bitstring));
+  let bool_has_auth: bool = has_auth() in
+
+
+  let SetupAuthR_success(ctx: context_t) =
+    SetupAuthR(key_hash, key_extract, enc, skR, info_hash, pkS) in
+  let Context_Open_success(pt: bitstring) =
+    Context_Open(ctx, aad, ct) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+  event rcvd(bool_has_auth, mode_auth, pkR, pkS, default_pskID, app_info, aad, pt, export_1, export_2);
+  out(c_resp, ())
+
+.
+
+
+let Initiator_Auth_swap(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                           pkR: G_t, skS: Z_t, pkS: G_t) =
+  ! i_N_initiators <= N_initiators_auth_sw
+  in(c_config_init, (pkX: G_t, pt: bitstring, aad: bitstring));
+
+  (* oneshot with exported keys *)
+  let SetupAuthI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthI(key_hash, key_extract, pkX, info_hash, skS) in
+  let Context_Seal_success(ct: bitstring) =
+    Context_Seal(ctx, aad, pt) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+
+  out(c_init, (enc, ct, aad, export_1, export_2))
+.
+
+
+let Responder_Auth_swap(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                           skR: Z_t, pkR: G_t, pkS: G_t) =
+  ! i_N_responders <= N_responders_auth_sw
+  in(c_resp, (enc: bitstring, ct: bitstring, aad: bitstring));
+
+  let SetupAuthR_success(ctx: context_t) =
+    SetupAuthR(key_hash, key_extract, enc, skR, info_hash, pkS) in
+  let Context_Open_success(pt: bitstring) =
+    Context_Open(ctx, aad, ct) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+  out(c_resp, (export_1, export_2))
+.
+
+
+
+
+
+let Initiator_Auth_PSK(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                       b_I: bool, pkR: G_t, skS: Z_t, pkS: G_t, psk: psk_t, pskID: bitstring, pskID_hash: bitstring) =
+  ! i_N_initiators <= N_initiators_auth_psk
+  in(c_config_init, (pkX: G_t, pt1: bitstring, pt2: bitstring,
+                          aad: bitstring));
+  if pkX = pkR then
+  if Zero(pt1) = Zero(pt2) then
+  let bit: bool = if has_secrecy(pkX, pkR) then b_I else false in
+  let pt: bitstring = test(bit, pt1, pt2) in
+
+  (* oneshot with exported keys *)
+  let SetupAuthPSKI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthPSKI(key_hash, key_extract, pkX, info_hash, psk, pskID, pskID_hash, skS) in
+  let Context_Seal_success(ct: bitstring) =
+    Context_Seal(ctx, aad, pt) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+
+  event sent(mode_auth_psk, pkX, pkS, pskID, app_info, aad, pt, export_1, export_2);
+
+  if has_secrecy(pkX, pkR) then
+  (
+    let export_1_secr: expand_t = export_1 in
+    let export_2_secr: expand_t = export_2 in
+    out(c_init, (enc, ct, aad))
+  ) else (
+    out(c_init, (enc, ct, aad, export_1, export_2))
+  )
+.
+
+
+let Responder_Auth_PSK(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                          skR: Z_t, pkR: G_t, pkS: G_t, psk: psk_t, pskID: bitstring, pskID_hash: bitstring) =
+  ! i_N_responders <= N_responders_auth_psk
+  in(c_resp, (enc: bitstring, ct: bitstring, aad: bitstring, pskID_recv: bitstring));
+  if pskID_recv = pskID then
+  let bool_has_auth: bool = has_auth() in
+
+  let SetupAuthPSKR_success(ctx: context_t) =
+    SetupAuthPSKR(key_hash, key_extract, enc, skR, info_hash, psk, pskID, pskID_hash, pkS) in
+  let Context_Open_success(pt: bitstring) =
+    Context_Open(ctx, aad, ct) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+  event rcvd(bool_has_auth, mode_auth_psk, pkR, pkS, pskID, app_info, aad, pt, export_1, export_2);
+  out(c_resp, ())
+.
+
+
+let Initiator_Auth_PSK_swap(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                            pkR: G_t, skS: Z_t, pkS: G_t, psk: psk_t, pskID: bitstring, pskID_hash: bitstring) =
+  ! i_N_initiators <= N_initiators_auth_psk_sw
+  in(c_config_init, (pkX: G_t, pt: bitstring, aad: bitstring));
+  if pkX = pkR then
+
+  (* oneshot with exported keys *)
+  let SetupAuthPSKI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthPSKI(key_hash, key_extract, pkX, info_hash, psk, pskID, pskID_hash, skS) in
+  let Context_Seal_success(ct: bitstring) =
+    Context_Seal(ctx, aad, pt) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+  out(c_init, (enc, ct, aad, export_1, export_2))
+.
+
+
+let Responder_Auth_PSK_swap(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                            skR: Z_t, pkR: G_t, pkS: G_t, psk: psk_t, pskID: bitstring, pskID_hash: bitstring) =
+  ! i_N_responders <= N_responders_auth_psk_sw
+  in(c_resp, (enc: bitstring, ct: bitstring, aad: bitstring, pskID_recv: bitstring));
+  if pskID_recv = pskID then
+
+  let SetupAuthPSKR_success(ctx: context_t) =
+    SetupAuthPSKR(key_hash, key_extract, enc, skR, info_hash, psk, pskID, pskID_hash, pkS) in
+  let Context_Open_success(pt: bitstring) =
+    Context_Open(ctx, aad, ct) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+  out(c_resp, (export_1, export_2))
+.
+
+
+(* Note that the adversary cannot chose the default psk here, because
+   VerifyMode would refuse to continue in this case. *)
+let Initiator_Auth_PSK_adv(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                           skS: Z_t, pkR: G_t) =
+  ! i_N_initiators <= N_initiators_auth_psk_adv
+  in(c_config_init, (psk: psk_t, pskID: bitstring, pskID_hash: bitstring, pkX: G_t, pt: bitstring,
+                     aad: bitstring));
+  (* Do not allow pkX = pkR. Otherwise the adversary could use this to craft a message between
+     initiator and responder, using the same psk (it"s compromised thus it knows it), which
+     means the responder would decrypt successfully and be convinced that the message
+     originates from the initiator.
+
+     This is not an issue in mode_psk, because in case of compromised psk, we cannot
+     prove authentication anyway. *)
+  if not(pkX = pkR) then
+
+  (* oneshot with exported keys *)
+  let SetupAuthPSKI_success(enc: bitstring, ctx: context_t) =
+    SetupAuthPSKI(key_hash, key_extract, pkX, info_hash, psk, pskID, pskID_hash, skS) in
+  let Context_Seal_success(ct: bitstring) =
+    Context_Seal(ctx, aad, pt) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+
+  out(c_init, (enc, ct, aad, export_1, export_2))
+.
+
+
+let Responder_Auth_PSK_adv(key_hash: hash_key_t, key_extract: hash_key_t, info_hash: bitstring,
+                          skR: Z_t, pkS: G_t) =
+  ! i_N_responders <= N_responders_auth_psk_adv
+  in(c_resp, (psk: psk_t, pskID: bitstring, pskID_hash: bitstring, enc: bitstring, ct: bitstring, aad: bitstring));
+
+  let SetupAuthPSKR_success(ctx: context_t) =
+    SetupAuthPSKR(key_hash, key_extract, enc, skR, info_hash, psk, pskID, pskID_hash, pkS) in
+  let Context_Open_success(pt: bitstring) =
+    Context_Open(ctx, aad, ct) in
+  let Context_Export_success(export_1: expand_t) =
+    Context_Export(ctx, exp_ctx_1) in
+  let Context_Export_success(export_2: expand_t) =
+    Context_Export(ctx, exp_ctx_2) in
+  out(c_resp, ((*export_1, export_2*))) (* TODO See comment at Responder_PSK_adv. *)
+.
+
+
+
+
+query secret b.
+
+query secret export_1_secr public_vars export_2_secr.
+query secret export_2_secr public_vars export_1_secr.
+
+
+
+
+query
+  mode: mode_t,
+  pkR: G_t, (* pkR *)
+  pkS: G_t, (* pkS *)
+  pskID: bitstring, (* pskID *)
+  info: bitstring, (* info *)
+  aad: bitstring, (* aad *)
+  pt: bitstring  (* plaintext *)
+
+,
+  export_1: expand_t,
+  export_2: expand_t
+
+;
+  event(rcvd(true, mode, pkR, pkS, pskID, info, aad, pt , export_1, export_2 )) ==>
+  event(sent(mode, pkR, pkS, pskID, info, aad, pt , export_1, export_2 )).
+
+
+
+let corrupt_skS(skS: Z_t) =
+  in(c_corrupt_skS, ());
+  let skS_is_corrupted: bool = true in
+  out(c_corrupt_skS, skS)
+  .
+
+
+
+
+
+
+
+
+(* TODO add a correctness query (same message contents => same key) *)
+
+process
+  in(c_start, ());
+  new key_hash: hash_key_t;
+
+  new key_extract_auth: hash_key_t;
+
+  let app_info_hash: bitstring = Hash(key_hash, app_info) in
+
+  let (skS: Z_t, pkS: G_t) = GenerateKeyPair() in
+  let (skR: Z_t, pkR: G_t) = GenerateKeyPair() in
+  new b: bool;
+  out(c_setup, (pkS, pkR    ));
+  (  Hash_oracle(key_hash)
+
+
+  | Initiator_Auth(key_hash, key_extract_auth, app_info_hash, b, pkR, skS, pkS)
+  | Responder_Auth(key_hash, key_extract_auth, app_info_hash, skR, pkR, pkS)
+  | Initiator_Auth_swap(key_hash, key_extract_auth, app_info_hash, pkS, skR, pkR)
+  | Responder_Auth_swap(key_hash, key_extract_auth, app_info_hash, skS, pkS, pkR)
+
+
+
+
+  | corrupt_skS(skS)
+
+
+
+
+
+  | ExtractAuth_oracle(key_extract_auth)
+
+
+  )
