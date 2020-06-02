@@ -1,0 +1,224 @@
+proof {
+  out_game "g00.out.cv" occ;
+
+
+  insert after "in(ch1\\["
+    "let concat3(protocol: bitstring, label: bitstring, p2b(Marshal(dh: G_t))) = x2 in";
+
+
+
+
+  out_game "g01.out.cv" occ;
+  crypto rom(Extract);
+
+
+  crypto gdh(exp);
+  out_game "g02.out.cv";
+  crypto prf(Expand) **;
+  success
+
+
+}
+
+channel c_start, c_setup, c_enc, c_enc_oth, c_dec.
+
+param N_enc, N_enc_oth, N_dec.
+
+type length_t [fixed].
+fun l2b(length_t): bitstring [data].
+const Nzz: length_t.
+
+const RFCXXXX: bitstring.
+const label_dh: bitstring.
+const label_prk: bitstring.
+
+fun concat2(bitstring, bitstring): bitstring [data].
+  (* This can be data because we only use it with fixed-length parameters *)
+fun concat3(bitstring, bitstring, bitstring): bitstring [data].
+  (* This can be data because we only use it with a few known constants
+     for the two first parameters, or with fixed-length parameters. *)
+fun concat4(bitstring, bitstring, bitstring, bitstring): bitstring.
+
+
+(* DH-based KEM *)
+
+
+
+(* For P-256 and P-521
+se a left-hand-side pattern matching of Marshal
+*)
+type G_t [bounded,large].
+type encoded_point_t [fixed,large].
+fun Marshal(G_t): encoded_point_t [data].
+fun p2b(encoded_point_t): bitstring [data].
+type Z_t [bounded,large].
+const dummy_Zt: Z_t.
+expand DH_good_group(
+  G_t,
+  Z_t,
+  g,
+  exp,
+  exp_1,
+  mult
+).
+
+proba P_GDH.
+expand GDH(
+  (* types *)
+  G_t,  (* Group elements *)
+  Z_t,  (* Exponents *)
+  (* variables *)
+  g,    (* a generator of the group *)
+  exp,  (* exponentiation function *)
+  exp_1, (* a symbol that replaces exp after game transformation *)
+  mult, (* multiplication function for exponents *)
+  (* probabilities *)
+  P_GDH (* probability of breaking the GDH assumption *)
+).
+
+
+
+
+
+
+letfun DH(exponent: Z_t, group_element: G_t) =
+  Marshal(exp(group_element, exponent)).
+letfun pk(exponent: Z_t) =
+  exp(g, exponent).
+letfun GenerateKeyPair() =
+  new z: Z_t;
+  (z, exp(g, z)).
+
+
+(* KDF *)
+
+type hash_key_t [fixed].
+
+type extract_t [fixed,large].
+fun e2b(extract_t): bitstring.
+const zeroNh_e: extract_t.
+const zeroNh: bitstring.
+equation e2b(zeroNh_e) = zeroNh.
+
+expand ROM_hash_2(
+  (* types *)
+  hash_key_t,
+  bitstring,
+  bitstring,
+  extract_t,
+  (* functions *)
+  Extract,
+  (* processes *)
+  Extract_orcl,
+  (* parameters *)
+  N_qExtr  (* number of queries to the oracle by the adversary *)
+).
+
+proba P_PRF.
+type expand_t [fixed,large].
+expand PRF_1(
+  extract_t,
+  bitstring,
+  expand_t,
+  Expand,
+  P_PRF
+).
+
+letfun LabeledExtract(key_extr: hash_key_t, salt: bitstring, label: bitstring, IKM: bitstring) =
+  let labeledIKM = concat3(RFCXXXX, label, IKM) in
+  Extract(key_extr, salt, labeledIKM).
+
+letfun LabeledExpand(PRK: extract_t, label: bitstring, info: bitstring, L: length_t) =
+  let labeledInfo = concat4(l2b(L), RFCXXXX, label, info) in
+  Expand(PRK, labeledInfo).
+
+letfun ExtractAndExpand(key_extr: hash_key_t, dh: bitstring, kemContext: bitstring) =
+  let prk = LabeledExtract(key_extr, zeroNh, label_dh, dh) in
+  LabeledExpand(prk, label_prk, kemContext, Nzz).
+
+
+
+type Encap_res_t.
+fun Encap_Some(expand_t, bitstring): Encap_res_t [data].
+const Encap_None: Encap_res_t.
+equation forall zz: expand_t, enc: bitstring;
+  Encap_Some(zz, enc) <> Encap_None.
+
+letfun Encap(key_extr: hash_key_t, pkR: G_t) =
+  let (skE: Z_t, pkE: G_t) = GenerateKeyPair() in
+  (
+    let dh: bitstring = p2b(DH(skE, pkR)) in
+    let enc: bitstring = p2b(Marshal(pkE)) in
+    let pkRm: bitstring = p2b(Marshal(pkR)) in
+    let kemContext: bitstring = concat2(enc, pkRm) in
+    let zz: expand_t = ExtractAndExpand(key_extr, dh, kemContext) in
+    Encap_Some(zz, enc)
+  ) else (
+    Encap_None
+  ).
+
+type Decap_res_t.
+fun Decap_Some(expand_t): Decap_res_t [data].
+const Decap_None: Decap_res_t.
+equation forall zz: expand_t; Decap_Some(zz) <> Decap_None.
+
+letfun Decap(key_extr: hash_key_t, enc: bitstring, skR: Z_t) =
+  let p2b(Marshal(pkE: G_t)) = enc in
+  (
+    let dh: bitstring = p2b(DH(skR, pkE)) in
+    let pkRm: bitstring = p2b(Marshal(pk(skR))) in
+    let kemContext: bitstring = concat2(enc, pkRm) in
+    let zz: expand_t = ExtractAndExpand(key_extr, dh, kemContext) in
+    Decap_Some(zz)
+  ) else (
+    Decap_None
+  ).
+
+
+
+
+
+
+
+
+query secret k.
+
+
+
+process
+  in(c_start, ());
+
+  new key_extr: hash_key_t;
+
+  let (skR: Z_t, pkR: G_t) = GenerateKeyPair() in
+
+
+
+  out(c_setup, (pkR));
+
+
+  ((
+    ! i_enc <= N_enc
+    in(c_enc, ());
+
+    let Encap_Some(k: expand_t, enc_hon: bitstring) = Encap(key_extr, pkR) in
+
+
+    out(c_enc, enc_hon)
+
+  )|(
+
+
+
+    ! i_dec <= N_dec
+    in(c_dec, enc_req: bitstring);
+    find j <= N_enc suchthat defined(enc_hon[j]) && enc_req = enc_hon[j] then
+    (
+      out(c_dec, ())
+    ) else (
+
+      out(c_dec, Decap(key_extr, enc_req, skR))
+
+    )
+  )| Extract_orcl(key_extr)
+  )

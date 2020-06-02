@@ -1,0 +1,377 @@
+proof {
+  out_game "g00.out.cv" occ;
+
+ifdef(`m4_noauth',`
+  insert after "in(ch1\\["
+    "let concat3(protocol: bitstring, label: bitstring, p2b(Marshal(dh: G_t))) = x2 in";
+')
+
+ifdef(`m4_auth',`
+  insert after "in(ch1\\["
+    "let concat3(protocol: bitstring, label: bitstring, concat2(p2b(Marshal(dh1: G_t)), p2b(Marshal(dh2: G_t)))) = x2 in";
+')
+
+  out_game "g01.out.cv" occ;
+  crypto rom(Extract);
+
+ifdef(`m4_auth',`
+  focus "query secret k public_vars skE_hon";
+')
+  crypto gdh(exp);
+  out_game "g02.out.cv";
+  crypto prf(Expand) **;
+  success
+
+ifdef(`m4_auth',`
+  ;
+  (* now prove the other "query secret k public_vars skS_adv" *)
+  crypto gdh(exp);
+  crypto prf(Expand) **;
+  success
+')
+}
+
+channel c_start, c_setup, c_enc, c_enc_oth, c_dec.
+
+param N_enc, N_enc_oth, N_dec.
+
+type length_t [fixed].
+fun l2b(length_t): bitstring [data].
+const Nzz: length_t.
+
+const RFCXXXX: bitstring.
+const label_dh: bitstring.
+const label_prk: bitstring.
+
+fun concat2(bitstring, bitstring): bitstring [data].
+  (* This can be data because we only use it with fixed-length parameters *)
+fun concat3(bitstring, bitstring, bitstring): bitstring [data].
+  (* This can be data because we only use it with a few known constants
+     for the two first parameters, or with fixed-length parameters. *)
+fun concat4(bitstring, bitstring, bitstring, bitstring): bitstring.
+
+
+(* DH-based KEM *)
+
+
+ifdef(`m4_curveprime',`
+(* For P-256 and P-521
+se a left-hand-side pattern matching of Marshal
+*)
+type G_t [bounded,large].
+type encoded_point_t [fixed,large].
+fun Marshal(G_t): encoded_point_t [data].
+fun p2b(encoded_point_t): bitstring [data].
+type Z_t [bounded,large].
+const dummy_Zt: Z_t.
+expand DH_good_group(
+  G_t,
+  Z_t,
+  g,
+  exp,
+  exp_1,
+  mult
+).
+
+proba P_GDH.
+expand GDH(
+  (* types *)
+  G_t,  (* Group elements *)
+  Z_t,  (* Exponents *)
+  (* variables *)
+  g,    (* a generator of the group *)
+  exp,  (* exponentiation function *)
+  exp_1, (* a symbol that replaces exp after game transformation *)
+  mult, (* multiplication function for exponents *)
+  (* probabilities *)
+  P_GDH (* probability of breaking the GDH assumption *)
+).
+')
+
+ifdef(`m4_curve25519',`
+(* For Curve25519
+- to model Unmarshal(), use a left-hand-side pattern matching of Marshal
+*)
+type G_t [bounded,large].
+type G8_t [bounded,large].
+type encoded_point_t [fixed,large].
+fun Marshal(G_t): encoded_point_t [data].
+fun p2b(encoded_point_t): bitstring [data].
+type Z_t [bounded,large,nonuniform].
+const dummy_Zt: Z_t.
+expand DH_X25519(
+  G_t,
+  Z_t,
+  g,
+  exp,
+  mult,
+  G8_t,
+  g8,
+  exp_div8,
+  exp_div8_1,
+  pow8,
+  G8_to_G,
+  zero,
+  zero8
+).
+
+proba P_GDH.
+expand GDH(
+  G8_t,
+  Z_t,
+  g8,
+  exp_div8,
+  exp_div8_1,
+  mult,
+  P_GDH
+).
+')
+
+ifdef(`m4_curve448',`
+(* For Curve448
+- to model Unmarshal(), use a left-hand-side pattern matching of Marshal
+- Znw_t are the exponents without weak keys
+*)
+type G_t [bounded,large].
+type G8_t [bounded,large].
+type encoded_point_t [fixed,large].
+fun Marshal(G_t): encoded_point_t [data].
+fun p2b(encoded_point_t): bitstring [data].
+type Z_t [bounded,large,nonuniform].
+type Znw_t [bounded,large,nonuniform].
+const dummy_Zt: Z_t.
+expand DH_X448(
+  G_t,
+  Z_t,
+  g,
+  exp,
+  mult,
+  G8_t,
+  Znw_t,
+  Znw_to_Z,
+  g8,
+  exp_div8,
+  exp_div8_1,
+  pow8,
+  G8_to_G,
+  zero,
+  zero8
+).
+
+proba P_GDH.
+expand GDH(
+  G8_t,
+  Znw_t,
+  g8,
+  exp_div8,
+  exp_div8_1,
+  mult,
+  P_GDH
+).
+')
+
+letfun DH(exponent: Z_t, group_element: G_t) =
+  Marshal(exp(group_element, exponent)).
+letfun pk(exponent: Z_t) =
+  exp(g, exponent).
+letfun GenerateKeyPair() =
+  new z: Z_t;
+  (z, exp(g, z)).
+
+
+(* KDF *)
+
+type hash_key_t [fixed].
+
+type extract_t [fixed,large].
+fun e2b(extract_t): bitstring.
+const zeroNh_e: extract_t.
+const zeroNh: bitstring.
+equation e2b(zeroNh_e) = zeroNh.
+
+expand ROM_hash_2(
+  (* types *)
+  hash_key_t,
+  bitstring,
+  bitstring,
+  extract_t,
+  (* functions *)
+  Extract,
+  (* processes *)
+  Extract_orcl,
+  (* parameters *)
+  N_qExtr  (* number of queries to the oracle by the adversary *)
+).
+
+proba P_PRF.
+type expand_t [fixed,large].
+expand PRF_1(
+  extract_t,
+  bitstring,
+  expand_t,
+  Expand,
+  P_PRF
+).
+
+letfun LabeledExtract(key_extr: hash_key_t, salt: bitstring, label: bitstring, IKM: bitstring) =
+  let labeledIKM = concat3(RFCXXXX, label, IKM) in
+  Extract(key_extr, salt, labeledIKM).
+
+letfun LabeledExpand(PRK: extract_t, label: bitstring, info: bitstring, L: length_t) =
+  let labeledInfo = concat4(l2b(L), RFCXXXX, label, info) in
+  Expand(PRK, labeledInfo).
+
+letfun ExtractAndExpand(key_extr: hash_key_t, dh: bitstring, kemContext: bitstring) =
+  let prk = LabeledExtract(key_extr, zeroNh, label_dh, dh) in
+  LabeledExpand(prk, label_prk, kemContext, Nzz).
+
+ifdef(`m4_noauth',`
+
+type Encap_res_t.
+fun Encap_Some(expand_t, bitstring): Encap_res_t [data].
+const Encap_None: Encap_res_t.
+equation forall zz: expand_t, enc: bitstring;
+  Encap_Some(zz, enc) <> Encap_None.
+
+letfun Encap(key_extr: hash_key_t, pkR: G_t) =
+  let (skE: Z_t, pkE: G_t) = GenerateKeyPair() in
+  (
+    let dh: bitstring = p2b(DH(skE, pkR)) in
+    let enc: bitstring = p2b(Marshal(pkE)) in
+    let pkRm: bitstring = p2b(Marshal(pkR)) in
+    let kemContext: bitstring = concat2(enc, pkRm) in
+    let zz: expand_t = ExtractAndExpand(key_extr, dh, kemContext) in
+    Encap_Some(zz, enc)
+  ) else (
+    Encap_None
+  ).
+
+type Decap_res_t.
+fun Decap_Some(expand_t): Decap_res_t [data].
+const Decap_None: Decap_res_t.
+equation forall zz: expand_t; Decap_Some(zz) <> Decap_None.
+
+letfun Decap(key_extr: hash_key_t, enc: bitstring, skR: Z_t) =
+  let p2b(Marshal(pkE: G_t)) = enc in
+  (
+    let dh: bitstring = p2b(DH(skR, pkE)) in
+    let pkRm: bitstring = p2b(Marshal(pk(skR))) in
+    let kemContext: bitstring = concat2(enc, pkRm) in
+    let zz: expand_t = ExtractAndExpand(key_extr, dh, kemContext) in
+    Decap_Some(zz)
+  ) else (
+    Decap_None
+  ).
+
+')
+
+ifdef(`m4_auth',`
+
+type AuthEncap_res_t.
+fun AuthEncap_Some(expand_t, bitstring): AuthEncap_res_t [data].
+const AuthEncap_None: AuthEncap_res_t.
+equation forall zz: expand_t, enc: bitstring;
+  AuthEncap_Some(zz, enc) <> AuthEncap_None.
+
+letfun AuthEncap(key_extr: hash_key_t, pkR: G_t, skS: Z_t) =
+  let (skE: Z_t, pkE: G_t) = GenerateKeyPair() in
+  (
+    let dh: bitstring = concat2(p2b(DH(skE, pkR)), p2b(DH(skS, pkR))) in
+    let enc: bitstring = p2b(Marshal(pkE)) in
+    let pkRm: bitstring = p2b(Marshal(pkR)) in
+    let pkSm: bitstring = p2b(Marshal(pk(skS))) in
+    let kemContext: bitstring = concat3(enc, pkRm, pkSm) in
+    let zz: expand_t = ExtractAndExpand(key_extr, dh, kemContext) in
+    (AuthEncap_Some(zz, enc), skE)
+  ) else (
+    (AuthEncap_None, dummy_Zt)
+  ).
+
+type AuthDecap_res_t.
+fun AuthDecap_Some(expand_t): AuthDecap_res_t [data].
+const AuthDecap_None: AuthDecap_res_t.
+equation forall zz: expand_t; AuthDecap_Some(zz) <> AuthDecap_None.
+
+letfun AuthDecap(key_extr: hash_key_t, enc: bitstring, skR: Z_t, pkS: G_t) =
+  let p2b(Marshal(pkE: G_t)) = enc in
+  (
+    let dh: bitstring = concat2(p2b(DH(skR, pkE)), p2b(DH(skR, pkS))) in
+    let pkRm: bitstring = p2b(Marshal(pk(skR))) in
+    let pkSm: bitstring = p2b(Marshal(pkS)) in
+    let kemContext: bitstring = concat3(enc, pkRm, pkSm) in
+    let zz: expand_t = ExtractAndExpand(key_extr, dh, kemContext) in
+    AuthDecap_Some(zz)
+  ) else (
+    AuthDecap_None
+  ).
+')
+
+ifdef(`m4_auth',`
+query secret k public_vars skE_hon.
+  (* making skE_hon_oth public is not useful because
+     the adversary is anyway supposed to know skO and could then
+     compute zz from enc (k_oth is public anyway) *)
+query secret k public_vars skS_adv.
+')
+
+ifdef(`m4_noauth',`
+query secret k.
+')
+
+
+process
+  in(c_start, ());
+
+  new key_extr: hash_key_t;
+
+  let (skR: Z_t, pkR: G_t) = GenerateKeyPair() in
+ifdef(`m4_auth',`
+  let (skS: Z_t, pkS: G_t) = GenerateKeyPair() in
+  let skS_adv: Z_t = skS in
+')
+
+ifdef(`m4_auth',`
+  out(c_setup, (pkR, pkS));
+',`
+  out(c_setup, (pkR));
+')
+
+  ((
+    ! i_enc <= N_enc
+    in(c_enc, ());
+ifdef(`m4_auth',`
+    let (AuthEncap_Some(k: expand_t, enc_hon: bitstring), skE_hon: Z_t) =
+      AuthEncap(key_extr, pkR, skS) in
+',`
+    let Encap_Some(k: expand_t, enc_hon: bitstring) = Encap(key_extr, pkR) in
+')
+
+    out(c_enc, enc_hon)
+
+  )|(
+
+ifdef(`m4_auth',`
+    ! i_enc_oth <= N_enc_oth
+    in(c_enc_oth, (pkO: G_t));
+    let (AuthEncap_Some(k_oth: expand_t, enc_hon_oth: bitstring), skE_hon_oth: Z_t) =
+      AuthEncap(key_extr, pkO, skS) in
+
+    (* only publishing enc is not enough: enc is independent from skS *)
+    out(c_enc_oth, (enc_hon_oth, k_oth))
+  )|(
+')
+
+    ! i_dec <= N_dec
+    in(c_dec, enc_req: bitstring);
+    find j <= N_enc suchthat defined(enc_hon[j]) && enc_req = enc_hon[j] then
+    (
+      out(c_dec, ())
+    ) else (
+ifdef(`m4_auth',`
+      out(c_dec, AuthDecap(key_extr, enc_req, skR, pkS))
+',`
+      out(c_dec, Decap(key_extr, enc_req, skR))
+')
+    )
+  )| Extract_orcl(key_extr)
+  )
